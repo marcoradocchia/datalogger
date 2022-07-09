@@ -1,7 +1,15 @@
 [package]
 name = "datalogger"
 version = "0.1.0"
+authors = ["Marco Radocchia <marco.radocchia@outlook.com"]
 edition = "2021"
+rust-version = "1.61.0"
+description = "Humidity & Temperature datalogger for DHT22 sensor on Raspberry Pi."
+readme = "README.md"
+repository = "https://github.com/marcoradocchia/datalogger/"
+license = "GPL-3.0-only"
+keywords = ["temperature", "humidity", "datalogger", "dht22", "raspberry-pi"]
+categories = ["command-line-utilities", "science"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

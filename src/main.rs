@@ -39,11 +39,11 @@ struct Args {
     #[clap(short, long, value_parser)]
     pin: u8,
 
-    /// Interval in seconds between consequent measures.
+    /// Interval in seconds between consecutive measures.
     #[clap(short, long, default_value_t = 120, value_parser = parse_interval)]
     interval: u64,
 
-    /// Output data file.
+    /// Output CSV data file.
     #[clap(value_parser)]
     output: Option<PathBuf>,
 }
@@ -121,7 +121,7 @@ fn main() -> ! {
                             .len()
                             == 0
                         {
-                            file.write_all(b"DATE,TIME,HUMIDITY,TEMPERATURE")
+                            file.write_all(b"DATE,TIME,HUMIDITY,TEMPERATURE\n")
                                 .unwrap_or_else(|e| {
                                     eprintln!("error: {e}");
                                     process::exit(1);
