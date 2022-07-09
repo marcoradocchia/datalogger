@@ -33,8 +33,7 @@ instructions and notes.
 
 ### Master branch
 
-To build and install from [master](master)
-branch run:
+To build and install from master branch run:
 ```sh
 cargo install --git https://github.com/marcoradocchia/datalogger --branch master
 ```
