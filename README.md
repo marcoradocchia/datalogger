@@ -26,14 +26,14 @@ Humidity & Temperature datalogger for DHT22 sensor on Raspberry Pi.
 
 ## Install
 
-The following installation instructions assume a **Rust toolchain** installed on the system.
-In order to install such toolchain you can use `rusutp`: see
+The following installation instructions assume a **Rust toolchain** installed
+on the system. In order to install such toolchain you can use `rusutp`: see
 https://www.rust-lang.org/tools/install for further installation
 instructions and notes.
 
 ### Master branch
 
-To build and install from [master](/marcoradocchia/datalogger/tree/master)
+To build and install from [master](master)
 branch run:
 ```sh
 cargo install --git https://github.com/marcoradocchia/datalogger --branch master
@@ -41,7 +41,8 @@ cargo install --git https://github.com/marcoradocchia/datalogger --branch master
 
 ### Latest release from crates.io
 
-To build and install the latest release from [crates.io](https://crates.io/crates/datalogger) run:
+To build and install the latest release from
+[crates.io](https://crates.io/crates/datalogger) run:
 ```
 cargo install datalogger
 ```
