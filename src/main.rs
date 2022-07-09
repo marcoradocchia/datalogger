@@ -7,8 +7,8 @@ use std::{
 };
 
 /// Parse interval value as `u32` grater than 2.
-fn parse_interval(interval: &str) -> Result<u32, String> {
-    match interval.parse::<u32>() {
+fn parse_interval(interval: &str) -> Result<u64, String> {
+    match interval.parse::<u64>() {
         Ok(val) => {
             if val < 2 {
                 Err("interval must be >=2".to_string())
@@ -61,8 +61,8 @@ impl Measure {
     fn to_csv(&self) -> String {
         format!(
             "{},{},{},{}\n",
-            self.datetime.date(),
-            self.datetime.time(),
+            self.datetime.date().format("%Y-%m-%d"),
+            self.datetime.time().format("%H:%M:%S"),
             self.reading.humidity,
             self.reading.temperature
         )
@@ -71,11 +71,11 @@ impl Measure {
 
 impl Display for Measure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
+        write!(
             f,
             "{} {} -> Humidity: {}%, Temperature: {}°C",
-            self.datetime.date(),
-            self.datetime.time(),
+            self.datetime.date().format("%Y-%m-%d"),
+            self.datetime.time().format("%H:%M:%S"),
             self.reading.humidity,
             self.reading.temperature
         )
@@ -85,7 +85,6 @@ impl Display for Measure {
 fn main() {
     // Parse CLI arguments.
     let args = Args::parse();
-    dbg!(&args);
 
     // Channel for message passing between main thread and output thread.
     let (tx, rx) = mpsc::channel::<Measure>();
@@ -121,7 +120,8 @@ fn main() {
             loop {
                 match dht22_pi::read(args.pin) {
                     Err(e) => {
-                        // Handle all ReadingError variants: don't exit process on Timeout, retry read instead.
+                        // Handle all ReadingError variants: don't exit process on Timeout, retry
+                        // read instead.
                         match e {
                             ReadingError::Timeout => {
                                 if retries < 10 {
