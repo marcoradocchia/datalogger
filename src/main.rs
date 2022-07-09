@@ -114,6 +114,21 @@ fn main() -> ! {
             if let Some(output) = &args.output {
                 match OpenOptions::new().create(true).append(true).open(output) {
                     Ok(mut file) => {
+                        // If file is empty write headers.
+                        if file
+                            .metadata()
+                            .expect("unable to get output file metadata")
+                            .len()
+                            == 0
+                        {
+                            file.write_all(b"DATE,TIME,HUMIDITY,TEMPERATURE")
+                                .unwrap_or_else(|e| {
+                                    eprintln!("error: {e}");
+                                    process::exit(1);
+                                });
+                        }
+
+                        // Write Measure to csv file.
                         file.write_all(reading.to_csv().as_bytes())
                             .unwrap_or_else(|e| {
                                 eprintln!("error: {e}");
