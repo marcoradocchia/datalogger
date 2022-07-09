@@ -84,13 +84,14 @@ impl Display for Measure {
 
 /// Retry DHT22 sensor reading and update the retries counter.
 fn retry(retries: &mut u8, msg: &str) {
+    const MAX_RETRIES: u8 = 10;
+
     // After 10 consecutive timeouts, exit process with error.
-    if *retries >= 10 {
+    if *retries >= MAX_RETRIES {
         eprintln!("error: {msg}, exceeded max retries");
         process::exit(1);
     }
 
-    eprintln!("warning: {msg}");
     *retries += 1;
 }
 
