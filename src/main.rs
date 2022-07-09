@@ -66,7 +66,7 @@ impl Measure {
     // Format measurement data to csv.
     fn to_csv(&self) -> String {
         format!(
-            "{},{},{:.04},{:.04}\n",
+            "{},{},{:04},{:04}\n",
             self.datetime.date().format("%Y-%m-%d"),
             self.datetime.time().format("%H:%M:%S"),
             self.reading.humidity,
