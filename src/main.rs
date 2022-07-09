@@ -3,7 +3,7 @@ use clap::Parser;
 use dht22_pi::{self, Reading, ReadingError};
 use std::{
     fmt::Display, fs::OpenOptions, io::Write, path::PathBuf, process, sync::mpsc, thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 /// Parse interval value as `u32` grater than 2.
@@ -60,7 +60,7 @@ impl Measure {
     // Format measurement data to csv.
     fn to_csv(&self) -> String {
         format!(
-            "{},{},{},{}\n",
+            "{},{},{:0>3},{:0>3}\n",
             self.datetime.date().format("%Y-%m-%d"),
             self.datetime.time().format("%H:%M:%S"),
             self.reading.humidity,
@@ -73,7 +73,7 @@ impl Display for Measure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} {} -> Humidity: {}%, Temperature: {}°C",
+            "{} {} -> Humidity: {:0>3}%, Temperature: {:0>3}°C",
             self.datetime.date().format("%Y-%m-%d"),
             self.datetime.time().format("%H:%M:%S"),
             self.reading.humidity,
@@ -82,7 +82,19 @@ impl Display for Measure {
     }
 }
 
-fn main() {
+/// Retry DHT22 sensor reading and update the retries counter.
+fn retry(retries: &mut u8, msg: &str) {
+    // After 10 consecutive timeouts, exit process with error.
+    if *retries >= 10 {
+        eprintln!("error: {msg}, exceeded max retries");
+        process::exit(1);
+    }
+
+    eprintln!("warning: {msg}");
+    *retries += 1;
+}
+
+fn main() -> ! {
     // Parse CLI arguments.
     let args = Args::parse();
 
@@ -93,13 +105,13 @@ fn main() {
         for reading in rx {
             // If output is file, write measure values to file, otherwhise print them to stdout.
             if let Some(output) = &args.output {
-                match OpenOptions::new().append(true).open(output) {
+                match OpenOptions::new().create(true).append(true).open(output) {
                     Ok(mut file) => {
                         file.write_all(reading.to_csv().as_bytes())
                             .unwrap_or_else(|e| {
                                 eprintln!("error: {e}");
                                 process::exit(1);
-                            })
+                            });
                     }
                     Err(e) => {
                         eprintln!("error: {e}");
@@ -114,6 +126,7 @@ fn main() {
 
     // Main loop.
     loop {
+        let start_measuring = Instant::now();
         let mut retries = 0;
         tx.send(Measure::new(
             // reading
@@ -124,19 +137,12 @@ fn main() {
                         // read instead.
                         match e {
                             ReadingError::Timeout => {
-                                if retries < 10 {
-                                    eprintln!("warning: timeout reached while reading sensor");
-                                    retries += 1;
-                                    continue;
-                                } else {
-                                    // After 10 consecutive timeouts, exit process with error.
-                                    eprintln!("error: reached max retries");
-                                    process::exit(1);
-                                }
+                                retry(&mut retries, "timeout reached while reading sensor");
+                                continue;
                             }
                             ReadingError::Checksum => {
-                                eprintln!("error: incorrect checksum value");
-                                process::exit(1);
+                                retry(&mut retries, "incorrect checksum value");
+                                continue;
                             }
                             ReadingError::Gpio(e) => {
                                 eprintln!("error: {}", e);
@@ -152,6 +158,7 @@ fn main() {
         ))
         .expect("unable to send reading to 'ouput' thread");
 
-        thread::sleep(Duration::from_secs(args.interval));
+        // Sleep for `args.interval` corrected by the time spend measuring.
+        thread::sleep(Duration::from_secs(args.interval) - start_measuring.elapsed());
     }
 }
