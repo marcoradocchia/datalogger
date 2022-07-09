@@ -2,7 +2,13 @@ use chrono::{DateTime, Local};
 use clap::Parser;
 use dht22_pi::{self, Reading, ReadingError};
 use std::{
-    fmt::Display, fs::OpenOptions, io::Write, path::PathBuf, process, sync::mpsc, thread,
+    fmt::{self, Display, Formatter},
+    fs::OpenOptions,
+    io::Write,
+    path::PathBuf,
+    process,
+    sync::mpsc,
+    thread,
     time::{Duration, Instant},
 };
 
@@ -34,7 +40,7 @@ struct Args {
     pin: u8,
 
     /// Interval in seconds between consequent measures.
-    #[clap(short, long, default_value_t = 2, value_parser = parse_interval)]
+    #[clap(short, long, default_value_t = 120, value_parser = parse_interval)]
     interval: u64,
 
     /// Output data file.
@@ -60,7 +66,7 @@ impl Measure {
     // Format measurement data to csv.
     fn to_csv(&self) -> String {
         format!(
-            "{},{},{:0>3},{:0>3}\n",
+            "{},{},{:.04},{:.04}\n",
             self.datetime.date().format("%Y-%m-%d"),
             self.datetime.time().format("%H:%M:%S"),
             self.reading.humidity,
@@ -70,10 +76,10 @@ impl Measure {
 }
 
 impl Display for Measure {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {} -> Humidity: {:0>3}%, Temperature: {:0>3}°C",
+            "{} {} -> Humidity: {}%, Temperature: {}°C",
             self.datetime.date().format("%Y-%m-%d"),
             self.datetime.time().format("%H:%M:%S"),
             self.reading.humidity,
@@ -84,7 +90,7 @@ impl Display for Measure {
 
 /// Retry DHT22 sensor reading and update the retries counter.
 fn retry(retries: &mut u8, msg: &str) {
-    const MAX_RETRIES: u8 = 10;
+    const MAX_RETRIES: u8 = 20;
 
     // After 10 consecutive timeouts, exit process with error.
     if *retries >= MAX_RETRIES {
@@ -157,7 +163,7 @@ fn main() -> ! {
             // datetime
             Local::now(),
         ))
-        .expect("unable to send reading to 'ouput' thread");
+        .expect("unable to send measure to 'ouput' thread");
 
         // Sleep for `args.interval` corrected by the time spend measuring.
         thread::sleep(Duration::from_secs(args.interval) - start_measuring.elapsed());
