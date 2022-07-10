@@ -12,6 +12,29 @@ use std::{
     time::{Duration, Instant},
 };
 
+const MAX_RETRIES: u8 = 20;
+
+/// Enum representing handled runtime errors.
+enum ErrorKind {
+    /// Occurs when sensor reading results in GPIO error.
+    GpioError(String),
+    /// Occurs when max retries value is reached while reading DHT22 sensor.
+    MaxRetries,
+    /// Occurs when theres is an issue with file output.
+    FileError(String)
+}
+
+impl Display for ErrorKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::GpioError(msg) => format!("GPIO error `{}`", msg),
+            Self::MaxRetries => "reached max retries while reading DHT22 sensor".to_string(),
+            Self::FileError(msg) => format!("unable to write data to file `{}`", msg),
+        }
+        .fmt(f)
+    }
+}
+
 /// Parse interval value as `u32` grater than 2.
 fn parse_interval(interval: &str) -> Result<u64, String> {
     match interval.parse::<u64>() {
@@ -43,6 +66,10 @@ struct Args {
     #[clap(short, long, default_value_t = 120, value_parser = parse_interval)]
     interval: u64,
 
+    /// Print output to stdin to be used in scripts [<hum,temp>].
+    #[clap(short, value_parser)]
+    script: bool,
+
     /// Output CSV data file.
     #[clap(value_parser)]
     output: Option<PathBuf>,
@@ -66,12 +93,17 @@ impl Measure {
     // Format measurement data to csv.
     fn to_csv(&self) -> String {
         format!(
-            "{},{},{:04},{:04}\n",
+            "{},{},{},{}\n",
             self.datetime.date().format("%Y-%m-%d"),
             self.datetime.time().format("%H:%M:%S"),
             self.reading.humidity,
             self.reading.temperature
         )
+    }
+
+    /// Format measurement as <hum,temp> to be used in scripts or piped in unix pipeline.
+    fn to_script_format(&self) -> String {
+        format!("{},{}", self.reading.humidity, self.reading.temperature)
     }
 }
 
@@ -89,26 +121,25 @@ impl Display for Measure {
 }
 
 /// Retry DHT22 sensor reading and update the retries counter.
-fn retry(retries: &mut u8, msg: &str) {
-    const MAX_RETRIES: u8 = 20;
-
+fn retry(retries: &mut u8) -> Result<(), ErrorKind> {
     // After 10 consecutive timeouts, exit process with error.
     if *retries >= MAX_RETRIES {
-        eprintln!("error: {msg}, exceeded max retries");
-        process::exit(1);
-    }
-
+        return Err(ErrorKind::MaxRetries);
+    };
+    // If max retries is not reached, increase counter.
     *retries += 1;
+
+    Ok(())
 }
 
-fn main() -> ! {
+fn run() -> Result<(), ErrorKind> {
     // Parse CLI arguments.
     let args = Args::parse();
 
     // Channel for message passing between main thread and output thread.
     let (tx, rx) = mpsc::channel::<Measure>();
 
-    thread::spawn(move || {
+    thread::spawn(move || -> Result<(), ErrorKind> {
         for reading in rx {
             // If output is file, write measure values to file, otherwhise print them to stdout.
             if let Some(output) = &args.output {
@@ -121,29 +152,24 @@ fn main() -> ! {
                             .len()
                             == 0
                         {
-                            file.write_all(b"DATE,TIME,HUMIDITY,TEMPERATURE\n")
-                                .unwrap_or_else(|e| {
-                                    eprintln!("error: {e}");
-                                    process::exit(1);
-                                });
+                            file.write_all(b"DATE,TIME,HUMIDITY,TEMPERATURE\n").unwrap();
                         }
 
                         // Write Measure to csv file.
-                        file.write_all(reading.to_csv().as_bytes())
-                            .unwrap_or_else(|e| {
-                                eprintln!("error: {e}");
-                                process::exit(1);
-                            });
+                        file.write_all(reading.to_csv().as_bytes()).unwrap();
                     }
-                    Err(e) => {
-                        eprintln!("error: {e}");
-                        process::exit(1);
-                    }
+                    Err(e) => return Err(ErrorKind::FileError(e.to_string())),
                 }
             } else {
-                println!("{}", reading);
+                if args.script {
+                    println!("{}", reading.to_script_format());
+                } else {
+                    println!("{reading}");
+                }
             }
         }
+
+        Ok(())
     });
 
     // Main loop.
@@ -158,17 +184,12 @@ fn main() -> ! {
                         // Handle all ReadingError variants: don't exit process on Timeout, retry
                         // read instead.
                         match e {
-                            ReadingError::Timeout => {
-                                retry(&mut retries, "timeout reached while reading sensor");
-                                continue;
-                            }
-                            ReadingError::Checksum => {
-                                retry(&mut retries, "incorrect checksum value");
+                            ReadingError::Timeout | ReadingError::Checksum => {
+                                retry(&mut retries)?;
                                 continue;
                             }
                             ReadingError::Gpio(e) => {
-                                eprintln!("error: {}", e);
-                                process::exit(1);
+                                return Err(ErrorKind::GpioError(e.to_string()))
                             }
                         }
                     }
@@ -182,5 +203,12 @@ fn main() -> ! {
 
         // Sleep for `args.interval` corrected by the time spend measuring.
         thread::sleep(Duration::from_secs(args.interval) - start_measuring.elapsed());
+    }
+}
+
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("error: {e}");
+        process::exit(1);
     }
 }
