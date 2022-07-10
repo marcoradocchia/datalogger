@@ -66,8 +66,8 @@ struct Args {
     #[clap(short, long, default_value_t = 120, value_parser = parse_interval)]
     interval: u64,
 
-    /// Print output to stdin to be used in scripts [<hum,temp>].
-    #[clap(short, value_parser)]
+    /// Format output as <hum,temp> to be used in scripts, like being piped in unix pipeline.
+    #[clap(short, long, value_parser, conflicts_with = "output")]
     script: bool,
 
     /// Output CSV data file.
@@ -101,7 +101,7 @@ impl Measure {
         )
     }
 
-    /// Format measurement as <hum,temp> to be used in scripts or piped in unix pipeline.
+    /// Format measurement as <hum,temp> to be used in scripts, like being piped in unix pipeline.
     fn to_script_format(&self) -> String {
         format!("{},{}", self.reading.humidity, self.reading.temperature)
     }
