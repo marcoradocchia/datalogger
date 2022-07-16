@@ -21,7 +21,7 @@ enum ErrorKind {
     /// Occurs when max retries value is reached while reading DHT22 sensor.
     MaxRetries,
     /// Occurs when theres is an issue with file output.
-    FileError(String)
+    FileError(String),
 }
 
 impl Display for ErrorKind {
@@ -178,6 +178,7 @@ fn run() -> Result<(), ErrorKind> {
         let mut retries = 0;
         tx.send(Measure::new(
             // reading
+            // Loop until valid result is obtained or max retries value is reached.
             loop {
                 match dht22_pi::read(args.pin) {
                     Err(e) => {

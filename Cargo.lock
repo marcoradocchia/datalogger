@@ -89,8 +89,7 @@ dependencies = [
 [[package]]
 name = "dht22_pi"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c98eba8ba318967d44ae188f3f22e1ecdb80db222130546fbbe6075315ef8216"
+source = "git+https://github.com/marcoradocchia/dht22_pi#61a718ed8feb10ec04bf57d537fe9e3413b977ee"
 dependencies = [
  "libc",
  "rppal",
@@ -214,9 +213,9 @@ dependencies = [
 
 [[package]]
 name = "rppal"
-version = "0.11.3"
+version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "137dbba1fb867daa27cda4c3cd6a11bca5bb5a1551f034cf9319b994846ddbe1"
+checksum = "c88c9c6248de4d337747b619d8f671055ef48a87dc21b97998833f189a0bbd4f"
 dependencies = [
  "lazy_static",
  "libc",
