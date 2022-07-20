@@ -6,16 +6,15 @@
   ![GitHub open issues](https://img.shields.io/github/issues-raw/marcoradocchia/datalogger?color=%23d8a657&logo=github)
   ![GitHub open pull requests](https://img.shields.io/github/issues-pr-raw/marcoradocchia/datalogger?color=%2389b482&logo=github)
   ![GitHub sponsors](https://img.shields.io/github/sponsors/marcoradocchia?color=%23d3869b&logo=github)
+  ![GitHub license](https://img.shields.io/github/license/marcoradocchia/datalogger?color=%23e78a4e)
   <!-- ![Crates.io downloads](https://img.shields.io/crates/d/datalogger?label=crates.io%20downloads&color=%23a9b665&logo=rust) -->
   <!-- ![Crates.io version](https://img.shields.io/crates/v/datalogger?logo=rust&color=%23d8a657) -->
-  ![GitHub license](https://img.shields.io/github/license/marcoradocchia/datalogger?color=%23e78a4e)
 </div>
 
 Humidity & Temperature datalogger for DHT22 sensor on Raspberry Pi.
 
 ## Index
 
-- [Use case](#use-case)
 - [Install](#install)
   * [Master branch](#master-branch)
   * [Latest release from crates.io](#latest-release-from-crates.io)
