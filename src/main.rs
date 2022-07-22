@@ -67,7 +67,7 @@ struct Args {
     interval: u64,
 
     /// Format output as <hum,temp> to be used in scripts, like being piped in unix pipeline.
-    #[clap(short, long, value_parser, conflicts_with = "output")]
+    #[clap(short, long, value_parser)]
     script: bool,
 
     /// Output CSV data file.
@@ -132,10 +132,7 @@ fn retry(retries: &mut u8) -> Result<(), ErrorKind> {
     Ok(())
 }
 
-fn run() -> Result<(), ErrorKind> {
-    // Parse CLI arguments.
-    let args = Args::parse();
-
+fn run(args: Args) -> Result<(), ErrorKind> {
     // Channel for message passing between main thread and output thread.
     let (tx, rx) = mpsc::channel::<Measure>();
 
@@ -143,6 +140,11 @@ fn run() -> Result<(), ErrorKind> {
         for reading in rx {
             // If output is file, write measure values to file, otherwhise print them to stdout.
             if let Some(output) = &args.output {
+                // If script options is passed, print with "<hum>,<temp>" format to stdout.
+                if args.script {
+                    println!("{}", reading.to_script_format());
+                }
+
                 match OpenOptions::new().create(true).append(true).open(output) {
                     Ok(mut file) => {
                         // If file is empty write headers.
@@ -160,12 +162,10 @@ fn run() -> Result<(), ErrorKind> {
                     }
                     Err(e) => return Err(ErrorKind::FileError(e.to_string())),
                 }
+            } else if args.script {
+                println!("{}", reading.to_script_format());
             } else {
-                if args.script {
-                    println!("{}", reading.to_script_format());
-                } else {
-                    println!("{reading}");
-                }
+                println!("{reading}");
             }
         }
 
@@ -208,7 +208,8 @@ fn run() -> Result<(), ErrorKind> {
 }
 
 fn main() {
-    if let Err(e) = run() {
+    // Parse CLI arguments, run the program and catch errors.
+    if let Err(e) = run(Args::parse()) {
         eprintln!("error: {e}");
         process::exit(1);
     }
