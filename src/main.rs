@@ -1,79 +1,41 @@
+// datalogger: Humidity & Temperature CLI datalogger for DHT22 sensor on Raspberry Pi.
+// Copyright (C) 2022 Marco Radocchia
+//
+// This program is free software: you can redistribute it and/or modify it under
+// the terms of the GNU General Public License as published by the Free Software
+// Foundation, either version 3 of the License, or (at your option) any later
+// version.
+//
+// This program is distributed in the hope that it will be useful, but WITHOUT
+// ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+// FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+// details.
+//
+// You should have received a copy of the GNU General Public License along with
+// this program. If not, see https://www.gnu.org/licenses/.
+
+mod args;
+mod error;
+
+use args::{Args, Parser};
 use chrono::{DateTime, Local};
-use clap::Parser;
 use dht22_pi::{self, Reading, ReadingError};
+use error::ErrorKind;
+use signal_hook::{consts::SIGINT, flag::register};
 use std::{
     fmt::{self, Display, Formatter},
     fs::OpenOptions,
     io::Write,
-    path::PathBuf,
     process,
-    sync::mpsc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Arc,
+    },
     thread,
     time::{Duration, Instant},
 };
 
 const MAX_RETRIES: u8 = 20;
-
-/// Enum representing handled runtime errors.
-enum ErrorKind {
-    /// Occurs when sensor reading results in GPIO error.
-    GpioError(String),
-    /// Occurs when max retries value is reached while reading DHT22 sensor.
-    MaxRetries,
-    /// Occurs when theres is an issue with file output.
-    FileError(String),
-}
-
-impl Display for ErrorKind {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::GpioError(msg) => format!("GPIO error `{}`", msg),
-            Self::MaxRetries => "reached max retries while reading DHT22 sensor".to_string(),
-            Self::FileError(msg) => format!("unable to write data to file `{}`", msg),
-        }
-        .fmt(f)
-    }
-}
-
-/// Parse interval value as `u32` grater than 2.
-fn parse_interval(interval: &str) -> Result<u64, String> {
-    match interval.parse::<u64>() {
-        Ok(val) => {
-            if val < 2 {
-                Err("interval must be >=2".to_string())
-            } else {
-                Ok(val)
-            }
-        }
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-/// Humidity & Temperature datalogger for DHT22 sensor on Raspberry Pi.
-#[derive(Parser, Debug)]
-#[clap(
-    author = "Marco Radocchia <marco.radocchia@outlook.com>",
-    version,
-    about,
-    long_about = None
-)]
-struct Args {
-    /// GPIO pin for DHT22 data connection.
-    #[clap(short, long, value_parser)]
-    pin: u8,
-
-    /// Interval in seconds between consecutive measures.
-    #[clap(short, long, default_value_t = 120, value_parser = parse_interval)]
-    interval: u64,
-
-    /// Format output as <hum,temp> to be used in scripts, like being piped in unix pipeline.
-    #[clap(short, long, value_parser)]
-    script: bool,
-
-    /// Output CSV data file.
-    #[clap(value_parser)]
-    output: Option<PathBuf>,
-}
 
 /// Sensor Reading and Date/Time.
 ///
@@ -101,8 +63,8 @@ impl Measure {
         )
     }
 
-    /// Format measurement as <hum,temp> to be used in scripts, like being piped in unix pipeline.
-    fn to_script_format(&self) -> String {
+    /// Format measurement as <hum,temp> to be used in unix pipelines.
+    fn to_pipe(&self) -> String {
         format!("{},{}", self.reading.humidity, self.reading.temperature)
     }
 }
@@ -136,16 +98,19 @@ fn run(args: Args) -> Result<(), ErrorKind> {
     // Channel for message passing between main thread and output thread.
     let (tx, rx) = mpsc::channel::<Measure>();
 
-    thread::spawn(move || -> Result<(), ErrorKind> {
-        for reading in rx {
+    // Output thread.
+    let output_thread = thread::spawn(move || -> Result<(), ErrorKind> {
+        for measure in rx {
             // If output is file, write measure values to file, otherwhise print them to stdout.
-            if let Some(output) = &args.output {
-                // If script options is passed, print with "<hum>,<temp>" format to stdout.
-                if args.script {
-                    println!("{}", reading.to_script_format());
+            if args.csv {
+                // If `pipe` options is passed, print with "<hum>,<temp>" format to stdout.
+                if args.pipe {
+                    println!("{}", measure.to_pipe());
                 }
 
-                match OpenOptions::new().create(true).append(true).open(output) {
+                let filename = Local::now().format(&args.format).to_string();
+                let csv_file = &args.directory.join(filename).with_extension("csv");
+                match OpenOptions::new().create(true).append(true).open(csv_file) {
                     Ok(mut file) => {
                         // If file is empty write headers.
                         if file
@@ -158,22 +123,28 @@ fn run(args: Args) -> Result<(), ErrorKind> {
                         }
 
                         // Write Measure to csv file.
-                        file.write_all(reading.to_csv().as_bytes()).unwrap();
+                        file.write_all(measure.to_csv().as_bytes()).unwrap();
                     }
                     Err(e) => return Err(ErrorKind::FileError(e.to_string())),
                 }
-            } else if args.script {
-                println!("{}", reading.to_script_format());
+            } else if args.pipe {
+                println!("{}", measure.to_pipe());
             } else {
-                println!("{reading}");
+                println!("{measure}");
             }
         }
 
         Ok(())
     });
 
-    // Main loop.
-    loop {
+    // Register signal hook for SIGINT events: in this case error is unrecoverable, so it's fine to
+    // panic.
+    let term = Arc::new(AtomicBool::new(false));
+    // Set `term` to true when the program receives a SIGTERM kill signal
+    register(SIGINT, Arc::clone(&term)).expect("unable to register SIGTERM event handler");
+
+    // Start main loop: loop guard is 'received SIGINT'.
+    while !term.load(Ordering::Relaxed) {
         let start_measuring = Instant::now();
         let mut retries = 0;
         tx.send(Measure::new(
@@ -202,15 +173,24 @@ fn run(args: Args) -> Result<(), ErrorKind> {
         ))
         .expect("unable to send measure to 'ouput' thread");
 
-        // Sleep for `args.interval` corrected by the time spend measuring.
+        // Sleep for `args.interval` corrected by the time spent measuring.
         thread::sleep(Duration::from_secs(args.interval) - start_measuring.elapsed());
     }
+
+    output_thread.join().expect("unable to join 'output_thread'")?;
+
+    Ok(())
 }
 
 fn main() {
-    // Parse CLI arguments, run the program and catch errors.
-    if let Err(e) = run(Args::parse()) {
-        eprintln!("error: {e}");
+    // Parse CLI arguments.
+    let args = Args::parse();
+
+    // Run the program and catch errors.
+    if let Err(e) = run(args) {
+        if e.colorize().is_err() {
+            eprintln!("error: {e}");
+        }
         process::exit(1);
     }
 }
