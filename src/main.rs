@@ -21,7 +21,10 @@ use args::{Args, Parser};
 use chrono::{DateTime, Local};
 use dht22_pi::{self, Reading, ReadingError};
 use error::ErrorKind;
-use signal_hook::{consts::SIGINT, flag::register};
+use signal_hook::{
+    consts::{SIGINT, SIGUSR1},
+    flag::register,
+};
 use std::{
     fmt::{self, Display, Formatter},
     fs::OpenOptions,
@@ -100,9 +103,25 @@ fn run(args: Args) -> Result<(), ErrorKind> {
 
     // Output thread.
     let output_thread = thread::spawn(move || -> Result<(), ErrorKind> {
+        // Register signal hook for SIGUSR1 events: such events swap the current args.csv value
+        // (this is used to enable/disable writing of measures to output file at runtime).
+        let sig = Arc::new(AtomicBool::new(false));
+        // Set `sig` to true when the program receives a SIGTERM kill signal.
+        register(SIGUSR1, Arc::clone(&sig)).expect("unable to register SIGUSR1 event handler");
+
+        // Local copy of args.csv which will be swapped every time SIGUSR1 is receivec, allowing
+        // user to swap CSV file printing behaviour (start/stop printing measures to file anytime
+        // at runtime).
+        let mut csv = args.csv;
+
         for measure in rx {
-            // If output is file, write measure values to file, otherwhise print them to stdout.
-            if args.csv {
+            // If SIGUSR1 received (so set to true), swap csv and restore sig to false.
+            if sig.load(Ordering::Relaxed) {
+                csv = !csv;
+                sig.store(false, Ordering::Relaxed);
+            }
+
+            if csv {
                 // If `pipe` options is passed, print with "<hum>,<temp>" format to stdout.
                 if args.pipe {
                     println!("{}", measure.to_pipe());
@@ -139,12 +158,12 @@ fn run(args: Args) -> Result<(), ErrorKind> {
 
     // Register signal hook for SIGINT events: in this case error is unrecoverable, so it's fine to
     // panic.
-    let term = Arc::new(AtomicBool::new(false));
-    // Set `term` to true when the program receives a SIGTERM kill signal
-    register(SIGINT, Arc::clone(&term)).expect("unable to register SIGTERM event handler");
+    let int = Arc::new(AtomicBool::new(false));
+    // Set `int` to true when the program receives a SIGTERM kill signal.
+    register(SIGINT, Arc::clone(&int)).expect("unable to register SIGTERM event handler");
 
     // Start main loop: loop guard is 'received SIGINT'.
-    while !term.load(Ordering::Relaxed) {
+    while !int.load(Ordering::Relaxed) {
         let start_measuring = Instant::now();
         let mut retries = 0;
         tx.send(Measure::new(
@@ -177,7 +196,9 @@ fn run(args: Args) -> Result<(), ErrorKind> {
         thread::sleep(Duration::from_secs(args.interval) - start_measuring.elapsed());
     }
 
-    output_thread.join().expect("unable to join 'output_thread'")?;
+    output_thread
+        .join()
+        .expect("unable to join 'output_thread'")?;
 
     Ok(())
 }
