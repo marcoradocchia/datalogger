@@ -1,1 +1,0 @@
-Set capabilities: `sudo setcap 'cap_sys_nice=eip' ./target/release/datalogger`

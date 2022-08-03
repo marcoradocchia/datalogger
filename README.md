@@ -11,13 +11,15 @@
   <!-- ![Crates.io version](https://img.shields.io/crates/v/datalogger?logo=rust&color=%23d8a657) -->
 </div>
 
-Humidity & Temperature datalogger for DHT22 sensor on Raspberry Pi.
+Humidity & Temperature CLI datalogger for DHT22 sensor on Raspberry Pi.
 
 ## Index
 
 - [Install](#install)
-  * [Master branch](#master-branch)
-  * [Latest release from crates.io](#latest-release-from-crates.io)
+  - [Git](#git)
+  - [Cargo](#cargo)
+    - [Master branch](#master-branch)
+    - [Latest release from crates.io](#latest-release-from-crates.io)
 - [Uninstall](#uninstall)
 - [Usage](#usage)
 - [Changelog](#changelog)
@@ -30,14 +32,28 @@ on the system. In order to install such toolchain you can use `rusutp`: see
 https://www.rust-lang.org/tools/install for further installation
 instructions and notes.
 
-### Master branch
+### Git
+
+If you want to install `datalogger`, including **manpage** and shell
+**completions** (Bash, Zsh, Fish), clone this repository and compile/install
+using `make`:
+```sh
+git clone https://github.com/marcoradocchia/datalogger
+cd datalogger
+make
+sudo make install
+```
+
+### Cargo
+
+#### Master branch
 
 To build and install from master branch run:
 ```sh
 cargo install --git https://github.com/marcoradocchia/datalogger --branch master
 ```
 
-### Latest release from crates.io
+#### Latest release from crates.io
 
 To build and install the latest release from
 [crates.io](https://crates.io/crates/datalogger) run:
@@ -45,31 +61,29 @@ To build and install the latest release from
 cargo install datalogger
 ```
 
-## Uninstall
-
-To uninstall run:
-```
-cargo uninstall datalogger
-```
-
 ## Usage
 
 ```
-datalogger 0.1.0
+datalogger 0.2.0
 Marco Radocchia <marco.radocchia@outlook.com>
-Humidity & Temperature datalogger for DHT22 sensor on Raspberry Pi.
+Humidity & Temperature CLI datalogger for DHT22 sensor on Raspberry Pi.
 
 USAGE:
-    datalogger [OPTIONS] --pin <PIN> [OUTPUT]
-
-ARGS:
-    <OUTPUT>    Output CSV data file
+    datalogger [OPTIONS] --pin <PIN>
 
 OPTIONS:
-    -h, --help                   Print help information
-    -i, --interval <INTERVAL>    Interval in seconds between consecutive measures [default: 120]
-    -p, --pin <PIN>              GPIO pin for DHT22 data connection
-    -V, --version                Print version information
+        --csv                      Dumps data to CSV file (can be swapped at runtime signalling
+                                   `datalogger` process with SIGUSR1)
+    -d, --directory <DIRECTORY>    Output CSV directory [default: ~]
+    -f, --format <FORMAT>          Output CSV filename format (see
+                                   https://docs.rs/chrono/latest/chrono/format/strftime/index.html
+                                   for valid specifiers) [default: %Y%m%d]
+    -h, --help                     Print help information
+    -i, --interval <INTERVAL>      Interval in seconds between consecutive measures [default: 120]
+    -p, --pin <PIN>                GPIO pin for DHT22 data connection
+    -P, --pipe                     Print output as `<hum,temp>` to stdout (for use in unix pipeline)
+    -q, --quiet                    Mute standard output
+    -V, --version                  Print version information
 ```
 
 ## Changelog
