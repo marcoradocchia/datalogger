@@ -22,7 +22,7 @@ use chrono::{DateTime, Local};
 use dht22_pi::{self, Reading, ReadingError};
 use error::ErrorKind;
 use signal_hook::{
-    consts::{SIGINT, SIGUSR1},
+    consts::SIGUSR1,
     flag::register,
 };
 use std::{
@@ -76,7 +76,7 @@ impl Display for Measure {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {} -> Humidity: {}%, Temperature: {}°C",
+            "Date: {},  Time: {}, Humidity: {}%, Temperature: {}°C",
             self.datetime.date().format("%Y-%m-%d"),
             self.datetime.time().format("%H:%M:%S"),
             self.reading.humidity,
@@ -102,7 +102,7 @@ fn run(args: Args) -> Result<(), ErrorKind> {
     let (tx, rx) = mpsc::channel::<Measure>();
 
     // Output thread.
-    let output_thread = thread::spawn(move || -> Result<(), ErrorKind> {
+    thread::spawn(move || -> Result<(), ErrorKind> {
         // Register signal hook for SIGUSR1 events: such events swap the current args.csv value
         // (this is used to enable/disable writing of measures to output file at runtime).
         let sig = Arc::new(AtomicBool::new(false));
@@ -115,23 +115,18 @@ fn run(args: Args) -> Result<(), ErrorKind> {
         let mut csv = args.csv;
 
         for measure in rx {
-            // If SIGUSR1 received (so set to true), swap csv and restore sig to false.
+            // If SIGUSR1 received (hence sig is true), swap csv and restore sig to false.
             if sig.load(Ordering::Relaxed) {
                 csv = !csv;
                 sig.store(false, Ordering::Relaxed);
             }
 
             if csv {
-                // If `pipe` options is passed, print with "<hum>,<temp>" format to stdout.
-                if args.pipe {
-                    println!("{}", measure.to_pipe());
-                }
-
                 let filename = Local::now().format(&args.format).to_string();
                 let csv_file = &args.directory.join(filename).with_extension("csv");
                 match OpenOptions::new().create(true).append(true).open(csv_file) {
                     Ok(mut file) => {
-                        // If file is empty write headers.
+                        // If file is empty, then write headers.
                         if file
                             .metadata()
                             .expect("unable to get output file metadata")
@@ -146,27 +141,24 @@ fn run(args: Args) -> Result<(), ErrorKind> {
                     }
                     Err(e) => return Err(ErrorKind::FileError(e.to_string())),
                 }
-            } else if args.pipe {
-                println!("{}", measure.to_pipe());
-            } else if args.csv == csv && !args.csv {
-                // Print human readable output to stdout only if args.csv is left unchanged and it
-                // was set to false at launch (this means the user is intentionally trying to print
-                // human readable to stdout).
-                println!("{measure}");
+            }
+
+            if !args.quiet {
+                // If `pipe` options is passed, print with "<hum>,<temp>" format to stdout, else
+                // print human readable values.
+                if args.pipe {
+                    println!("{}", measure.to_pipe());
+                } else {
+                    println!("{}", measure);
+                }
             }
         }
 
         Ok(())
     });
 
-    // Register signal hook for SIGINT events: in this case error is unrecoverable, so it's fine to
-    // panic.
-    let int = Arc::new(AtomicBool::new(false));
-    // Set `int` to true when the program receives a SIGTERM kill signal.
-    register(SIGINT, Arc::clone(&int)).expect("unable to register SIGTERM event handler");
-
     // Start main loop: loop guard is 'received SIGINT'.
-    while !int.load(Ordering::Relaxed) {
+    loop {
         let start_measuring = Instant::now();
         let mut retries = 0;
         tx.send(Measure::new(
@@ -198,13 +190,6 @@ fn run(args: Args) -> Result<(), ErrorKind> {
         // Sleep for `args.interval` corrected by the time spent measuring.
         thread::sleep(Duration::from_secs(args.interval) - start_measuring.elapsed());
     }
-
-    drop(tx);
-    output_thread
-        .join()
-        .expect("unable to join 'output_thread'")?;
-
-    Ok(())
 }
 
 fn main() {

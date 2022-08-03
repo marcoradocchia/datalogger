@@ -78,12 +78,12 @@ pub struct Args {
     #[clap(short, long, default_value_t = 120, value_parser = parse_interval)]
     pub interval: u64,
 
-    /// Print output as <hum,temp> to stdout (for use in unix pipeline).
+    /// Print output as `<hum,temp>` to stdout (for use in unix pipeline).
     #[clap(short = 'P', long, action = SetTrue)]
     pub pipe: bool,
 
     /// Output CSV directory.
-    #[clap(short, long, default_value = "~", value_parser = parse_directory, requires = "csv")]
+    #[clap(short, long, default_value = "~", value_parser = parse_directory)]
     pub directory: PathBuf,
 
     /// Output CSV filename format (see
@@ -91,7 +91,12 @@ pub struct Args {
     #[clap(short, long, default_value = "%Y%m%d")]
     pub format: String,
 
-    /// Dumps data to CSV file.
+    /// Dumps data to CSV file (can be swapped at runtime signalling `datalogger` process with
+    /// SIGUSR1).
     #[clap(long, action = SetTrue)]
     pub csv: bool,
+
+    /// Mute standard output.
+    #[clap(short, long, action = SetTrue)]
+    pub quiet: bool,
 }
