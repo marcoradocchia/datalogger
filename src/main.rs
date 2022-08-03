@@ -109,9 +109,9 @@ fn run(args: Args) -> Result<(), ErrorKind> {
         // Set `sig` to true when the program receives a SIGTERM kill signal.
         register(SIGUSR1, Arc::clone(&sig)).expect("unable to register SIGUSR1 event handler");
 
-        // Local copy of args.csv which will be swapped every time SIGUSR1 is receivec, allowing
-        // user to swap CSV file printing behaviour (start/stop printing measures to file anytime
-        // at runtime).
+        // Local copy of args.csv which will be swapped every time SIGUSR1 signal is received,
+        // allowing user to swap CSV file printing behaviour (start/stop printing measures to file
+        // anytime at runtime).
         let mut csv = args.csv;
 
         for measure in rx {
@@ -148,7 +148,10 @@ fn run(args: Args) -> Result<(), ErrorKind> {
                 }
             } else if args.pipe {
                 println!("{}", measure.to_pipe());
-            } else {
+            } else if args.csv == csv && !args.csv {
+                // Print human readable output to stdout only if args.csv is left unchanged and it
+                // was set to false at launch (this means the user is intentionally trying to print
+                // human readable to stdout).
                 println!("{measure}");
             }
         }
@@ -196,6 +199,7 @@ fn run(args: Args) -> Result<(), ErrorKind> {
         thread::sleep(Duration::from_secs(args.interval) - start_measuring.elapsed());
     }
 
+    drop(tx);
     output_thread
         .join()
         .expect("unable to join 'output_thread'")?;
