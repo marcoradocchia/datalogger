@@ -131,8 +131,9 @@ dependencies = [
 
 [[package]]
 name = "dht22_pi"
-version = "0.3.0"
-source = "git+https://github.com/marcoradocchia/dht22_pi#61a718ed8feb10ec04bf57d537fe9e3413b977ee"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f0b44c8771720afc0236eacbf1cfc0cd0a425bc7cf4e8ecc0bfa4d609624acc"
 dependencies = [
  "libc",
  "rppal",
