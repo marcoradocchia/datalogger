@@ -144,10 +144,10 @@ fn run(args: Args) -> Result<(), ErrorKind> {
             }
 
             if !args.quiet {
-                // If `pipe` options is passed, print with "<hum>,<temp>" format to stdout, else
+                // If `pipe` options is passed, print with "<hum>,<temp>,<logging>" format to stdout, else
                 // print human readable values.
                 if args.pipe {
-                    println!("{}", measure.to_pipe());
+                    println!("{},{}", measure.to_pipe(), csv);
                 } else {
                     println!("{}", measure);
                 }
