@@ -1,5 +1,8 @@
 use clap::CommandFactory;
-use clap_complete::{generate_to, Shell::*};
+use clap_complete::{
+    generate_to,
+    Shell::{Bash, Fish, Zsh},
+};
 use clap_mangen::{self, Man};
 use std::env;
 

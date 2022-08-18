@@ -1,7 +1,7 @@
 [package]
 name = "datalogger"
 version = "0.2.0"
-authors = ["Marco Radocchia <marco.radocchia@outlook.com"]
+authors = ["Marco Radocchia <marco.radocchia@outlook.com>"]
 edition = "2021"
 rust-version = "1.61.0"
 description = "Humidity & Temperature CLI datalogger for DHT22 sensor on Raspberry Pi."
@@ -14,10 +14,10 @@ categories = ["command-line-utilities", "science"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-dht22_pi = { git = "https://github.com/marcoradocchia/dht22_pi" }
 clap = { version = "3.2.16", features = ["derive"] }
+dht22_pi = "1.0.0"
 chrono = "0.4.19"
-signal-hook = "0.3.14" 
+signal-hook = "0.3.14"
 directories = "4.0.1"
 termcolor = "1.1.3"
 atty = "0.2.14"
@@ -32,5 +32,5 @@ regex = "1.6.0"
 directories = "4.0.1"
 
 [profile.release]
-lto = true # link-time-optimization
+lto = true   # link-time-optimization
 strip = true # strip symbols from binary
