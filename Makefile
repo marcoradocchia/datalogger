@@ -10,8 +10,8 @@ all:
 install:
 	# Install binary.
 	mkdir -p ${DESTDIR}${PREFIX}/bin
-	setcap 'cap_sys_nice=eip' target/release/datalogger
 	install -Dm 755 target/release/datalogger -t "${DESTDIR}${PREFIX}/bin"
+	setcap 'cap_sys_nice=eip' "${DESTDIR}${PREFIX}/bin/datalogger"
 	# Install manpage.
 	mkdir -p ${DESTDIR}${MANPREFIX}/man1
 	install -Dm 644 man/datalogger.1 -t "${DESTDIR}${MANPREFIX}/man1"

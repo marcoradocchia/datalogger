@@ -21,13 +21,10 @@ use args::{Args, Parser};
 use chrono::{DateTime, Local};
 use dht22_pi::{self, Reading, ReadingError};
 use error::ErrorKind;
-use signal_hook::{
-    consts::SIGUSR1,
-    flag::register,
-};
+use signal_hook::{consts::SIGUSR1, flag::register};
 use std::{
     fmt::{self, Display, Formatter},
-    fs::OpenOptions,
+    fs::{self, OpenOptions},
     io::Write,
     process,
     sync::{
@@ -37,6 +34,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+
+type Result<T> = std::result::Result<T, ErrorKind>;
 
 const MAX_RETRIES: u8 = 20;
 
@@ -86,7 +85,7 @@ impl Display for Measure {
 }
 
 /// Retry DHT22 sensor reading and update the retries counter.
-fn retry(retries: &mut u8) -> Result<(), ErrorKind> {
+fn retry(retries: &mut u8) -> Result<()> {
     // After 10 consecutive timeouts, exit process with error.
     if *retries >= MAX_RETRIES {
         return Err(ErrorKind::MaxRetries);
@@ -97,59 +96,69 @@ fn retry(retries: &mut u8) -> Result<(), ErrorKind> {
     Ok(())
 }
 
-fn run(args: Args) -> Result<(), ErrorKind> {
+fn run(args: Args) -> Result<()> {
+    // Create directory (including parent directories if not present) if doesn't exist.
+    if !args.directory.is_dir() {
+        fs::create_dir_all(&args.directory)
+            .map_err(|err| ErrorKind::MkDirErr(args.directory.to_owned(), err))?;
+    }
+
     // Channel for message passing between main thread and output thread.
     let (tx, rx) = mpsc::channel::<Measure>();
 
     // Output thread.
-    thread::spawn(move || -> Result<(), ErrorKind> {
-        // Register signal hook for SIGUSR1 events: such events swap the current args.csv value
-        // (this is used to enable/disable writing of measures to output file at runtime).
-        let sig = Arc::new(AtomicBool::new(false));
-        // Set `sig` to true when the program receives a SIGTERM kill signal.
-        register(SIGUSR1, Arc::clone(&sig)).expect("unable to register SIGUSR1 event handler");
+    thread::spawn(move || -> Result<()> {
+        // Register signal hook for SIGUSR1 events.
+        let sigusr1 = Arc::new(AtomicBool::new(false));
+        // Set `sigusr1` to `true` when the program receives a SIGUSR1 signal.
+        register(SIGUSR1, Arc::clone(&sigusr1))
+            .map_err(|_| "unable to register SIGUSR1 event handler")?;
 
         // Local copy of args.csv which will be swapped every time SIGUSR1 signal is received,
-        // allowing user to swap CSV file printing behaviour (start/stop printing measures to file
-        // anytime at runtime).
+        // allowing user to swap CSV file printing behaviour (start/stop dumping measures to CSV
+        // file anytime at runtime).
         let mut csv = args.csv;
 
         for measure in rx {
-            // If SIGUSR1 received (hence sig is true), swap csv and restore sig to false.
-            if sig.load(Ordering::Relaxed) {
+            // If SIGUSR1 received (hence `sigusr1` is `true`), swap csv and restore `sigusr1` to
+            // false.
+            if sigusr1.load(Ordering::Relaxed) {
                 csv = !csv;
-                sig.store(false, Ordering::Relaxed);
+                sigusr1.store(false, Ordering::Relaxed);
             }
 
+            // If `csv` status is true, write data to CSV file.
             if csv {
                 let filename = Local::now().format(&args.format).to_string();
                 let csv_file = &args.directory.join(filename).with_extension("csv");
-                match OpenOptions::new().create(true).append(true).open(csv_file) {
-                    Ok(mut file) => {
-                        // If file is empty, then write headers.
-                        if file
-                            .metadata()
-                            .expect("unable to get output file metadata")
-                            .len()
-                            == 0
-                        {
-                            file.write_all(b"DATE,TIME,HUMIDITY,TEMPERATURE\n").unwrap();
-                        }
+                let mut file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(csv_file)
+                    .map_err(|err| ErrorKind::FileOpenErr(csv_file.to_owned(), err))?;
 
-                        // Write Measure to csv file.
-                        file.write_all(measure.to_csv().as_bytes()).unwrap();
-                    }
-                    Err(e) => return Err(ErrorKind::FileError(e.to_string())),
+                // If file is empty, then write headers.
+                if file
+                    .metadata()
+                    .map_err(|err| ErrorKind::FileMetadataErr(csv_file.to_owned(), err))?
+                    .len()
+                    == 0
+                {
+                    file.write_all(b"DATE,TIME,HUMIDITY,TEMPERATURE\n")
+                        .map_err(|err| ErrorKind::FileWriteErr(csv_file.to_owned(), err))?;
                 }
+
+                // Write Measure to csv file.
+                file.write_all(measure.to_csv().as_bytes())
+                    .map_err(|err| ErrorKind::FileWriteErr(csv_file.to_owned(), err))?;
             }
 
             if !args.quiet {
-                // If `pipe` options is passed, print with "<hum>,<temp>,<logging>" format to stdout, else
+                // If `pipe` options is passed, print with "<hum>,<temp>" format to stdout, else
                 // print human readable values.
-                if args.pipe {
-                    println!("{},{}", measure.to_pipe(), csv);
-                } else {
-                    println!("{}", measure);
+                match args.pipe {
+                    true => println!("{}", measure.to_pipe()),
+                    false => println!("{}", measure),
                 }
             }
         }
@@ -159,36 +168,39 @@ fn run(args: Args) -> Result<(), ErrorKind> {
 
     // Start main loop: loop guard is 'received SIGINT'.
     loop {
-        let start_measuring = Instant::now();
+        let instant = Instant::now();
         let mut retries = 0;
         tx.send(Measure::new(
-            // reading
             // Loop until valid result is obtained or max retries value is reached.
             loop {
                 match dht22_pi::read(args.pin) {
-                    Err(e) => {
-                        // Handle all ReadingError variants: don't exit process on Timeout, retry
-                        // read instead.
-                        match e {
-                            ReadingError::Timeout | ReadingError::Checksum => {
-                                retry(&mut retries)?;
-                                continue;
-                            }
-                            ReadingError::Gpio(e) => {
-                                return Err(ErrorKind::GpioError(e.to_string()))
-                            }
+                    // Handle all ReadingError variants:
+                    // don't exit process on Timeout or Checksum errors, retry read instead.
+                    Err(err) => match err {
+                        ReadingError::Timeout | ReadingError::Checksum => {
+                            retry(&mut retries)?;
+                            continue;
                         }
-                    }
+                        ReadingError::Gpio(err) => {
+                            return Err(ErrorKind::GpioError(err));
+                        }
+                    },
                     Ok(reading) => break reading,
                 }
             },
             // datetime
             Local::now(),
         ))
-        .expect("unable to send measure to 'ouput' thread");
+        .map_err(|_| ErrorKind::MsgPassingErr)?;
 
-        // Sleep for `args.interval` corrected by the time spent measuring.
-        thread::sleep(Duration::from_secs(args.interval) - start_measuring.elapsed());
+        // Sleep for `args.interval` corrected by the time spent measuring: if elapsed time is
+        // grates than the specified interval, this means the measuring process took longer than
+        // expected, so don't wait at all since we're already late.
+        if let Some(delay) =
+            Duration::from_secs(args.interval.into()).checked_sub(instant.elapsed())
+        {
+            thread::sleep(delay);
+        }
     }
 }
 
@@ -197,9 +209,9 @@ fn main() {
     let args = Args::parse();
 
     // Run the program and catch errors.
-    if let Err(e) = run(args) {
-        if e.colorize().is_err() {
-            eprintln!("error: {e}");
+    if let Err(err) = run(args) {
+        if err.colorize().is_err() {
+            eprintln!("error: {err}.");
         }
         process::exit(1);
     }

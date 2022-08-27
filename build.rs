@@ -4,7 +4,7 @@ use clap_complete::{
     Shell::{Bash, Fish, Zsh},
 };
 use clap_mangen::{self, Man};
-use std::env;
+use std::{env, fs};
 
 // Include Args struct.
 include!("src/args.rs");
